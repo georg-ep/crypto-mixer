@@ -10,5 +10,6 @@ RUN npm install
 RUN npm install -g typescript nodemon
 COPY . ./app
 RUN npx prisma generate
+RUN npx prisma migrate dev
 CMD [ "npm", "run", "start" ]
 
