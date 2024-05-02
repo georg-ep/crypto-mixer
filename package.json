@@ -1,0 +1,25 @@
+{
+  "name": "sol-mixer",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "tsc && dotenv -c '.env' -- nodemon dist/app"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "prisma": "^5.13.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.13.0",
+    "@solana/web3.js": "^1.91.7",
+    "body-parser": "^1.20.2",
+    "decimal.js": "^10.4.3",
+    "dotenv": "^16.4.5",
+    "dotenv-cli": "^7.4.1",
+    "express": "^4.19.2"
+  }
+}
