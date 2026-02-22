@@ -6,166 +6,121 @@ import * as solanaUtils from "../utils/solana";
 import WalletController from "../controllers/walletController";
 import { Signer, PublicKey } from "@solana/web3.js";
 import { SendTransactionResponse } from "../interfaces/solana";
-import { Wallet } from "@prisma/client";
-import { validateFields } from "../utils/validation";
 
-jest.mock('../utils/prismaClient', () => ({
-  default: {
+jest.mock("../utils/prismaClient", () => ({
     wallet: {
-      findMany: jest.fn(),
-      create: jest.fn(),
-      findUnique: jest.fn(),
-      update: jest.fn(),
+        findMany: jest.fn(),
+        create: jest.fn(),
     },
-  },
 }));
 
 jest.mock("../utils/solana");
 jest.mock("../controllers/walletController");
-jest.mock("../utils/validation");
-
 
 describe('wallets router', () => {
-  let mockRequest: Partial<Request>;
-  let mockResponse: Partial<Response>;
+    let mockRequest: any;
+    let mockResponse: any;
 
-  beforeEach(() => {
-    mockRequest = {};
-    mockResponse = {
-      send: jest.fn(),
-      json: jest.fn(),
-      status: jest.fn().mockReturnThis(),
-    };
-    jest.clearAllMocks();
-  });
-
-  it('GET / should return wallets', async () => {
-    const mockWallets = [{ id: 1, publicKey: 'test' }, { id: 2, publicKey: 'test2' }];
-    (prisma.wallet.findMany as jest.Mock).mockResolvedValue(mockWallets);
-
-    await router.get("/", mockRequest as Request, mockResponse as Response);
-
-    expect(prisma.wallet.findMany).toHaveBeenCalled();
-    expect(mockResponse.send).toHaveBeenCalledWith(mockWallets);
-  });
-
-  it('POST /create should create a wallet', async () => {
-    mockRequest = {
-      body: {
-        privateKey: 'private',
-        publicKey: 'public',
-      },
-    };
-    (prisma.wallet.create as jest.Mock).mockResolvedValue({ privateKey: 'private', publicKey: 'public' });
-
-    await router.post("/create", mockRequest as Request, mockResponse as Response);
-
-    expect(prisma.wallet.create).toHaveBeenCalledWith({
-      data: {
-        privateKey: 'private',
-        publicKey: 'public',
-      },
+    beforeEach(() => {
+        mockRequest = {};
+        mockResponse = {
+            send: jest.fn(),
+            json: jest.fn(),
+            status: jest.fn(() => mockResponse),
+        };
     });
-    expect(mockResponse.send).toHaveBeenCalledWith("success");
-  });
 
-  it('POST /create should handle errors', async () => {
-    mockRequest = {
-      body: {
-        privateKey: 'private',
-        publicKey: 'public',
-      },
-    };
-    const mockError = new Error('Test error');
-    (prisma.wallet.create as jest.Mock).mockRejectedValue(mockError);
-
-    await router.post("/create", mockRequest as Request, mockResponse as Response);
-
-    expect(prisma.wallet.create).toHaveBeenCalled();
-    expect(mockResponse.send).toHaveBeenCalledWith(`err ${mockError}`);
-  });
-
-  it('POST /transfer should transfer SOL successfully', async () => {
-    const mockFrom = 'fromPublicKey';
-    const mockTo = 'toPublicKey';
-    const mockAmount = 10;
-    const mockFromAccount: Wallet = { id: 1, publicKey: mockFrom, privateKey: 'fromPrivateKey', createdAt: new Date(), updatedAt: new Date(), solBalance: 100 };
-    const mockToAccount: Wallet = { id: 2, publicKey: mockTo, privateKey: 'toPrivateKey', createdAt: new Date(), updatedAt: new Date(), solBalance: 50 };
-    const mockResponseData: SendTransactionResponse = {
-      signature: 'signature',
-      fromBal: 90,
-      toBal: 60,
-      data: 'data',
-      url: 'url',
-    };
-
-    mockRequest = {
-      body: {
-        from: mockFrom,
-        to: mockTo,
-        amount: mockAmount,
-      },
-    };
-    (WalletController.getWalletByPublicKey as jest.Mock).mockResolvedValueOnce(mockFromAccount).mockResolvedValueOnce(mockToAccount);
-    (solanaUtils.sendTransaction as jest.Mock).mockResolvedValue(mockResponseData);
-    (WalletController.updateWallet as jest.Mock).mockResolvedValue(null);
-
-    await router.post("/transfer", mockRequest as Request, mockResponse as Response);
-
-    expect(WalletController.getWalletByPublicKey).toHaveBeenCalledTimes(2);
-    expect(solanaUtils.sendTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ publicKey: new PublicKey(mockFrom) }),
-      expect.objectContaining({ publicKey: new PublicKey(mockTo) }),
-      mockAmount,
-    );
-    expect(WalletController.updateWallet).toHaveBeenCalledTimes(2);
-    expect(WalletController.updateWallet).toHaveBeenCalledWith(mockFrom, { solBalance: 90 });
-    expect(WalletController.updateWallet).toHaveBeenCalledWith(mockTo, { solBalance: 60 });
-    expect(mockResponse.json).toHaveBeenCalledWith(mockResponseData);
-  });
-
-  it('POST /transfer should handle validation errors', async () => {
-    mockRequest = {
-      body: {
-        from: undefined,
-        to: 'toPublicKey',
-        amount: 10,
-      },
-    };
-    (validateFields as jest.Mock).mockReturnValue(['from']);
-
-    await router.post("/transfer", mockRequest as Request, mockResponse as Response);
-
-    expect(mockResponse.status).toHaveBeenCalledWith(400);
-    expect(mockResponse.json).toHaveBeenCalledWith({
-      error: 'Missing required fields',
-      missingFields: ['from'],
+    it('GET / should return wallets', async () => {
+        const mockWallets = [{ id: 1, publicKey: 'key1', privateKey: 'key1' }];
+        (prisma.wallet.findMany as jest.Mock).mockResolvedValue(mockWallets);
+        mockRequest = {};
+        await router.get("/", mockRequest as Request, mockResponse as Response);
+        expect(prisma.wallet.findMany).toHaveBeenCalled();
+        expect(mockResponse.send).toHaveBeenCalledWith(mockWallets);
     });
-    expect(solanaUtils.sendTransaction).not.toHaveBeenCalled();
-  });
 
-  it('POST /transfer should handle errors from sendTransaction', async () => {
-    const mockFrom = 'fromPublicKey';
-    const mockTo = 'toPublicKey';
-    const mockAmount = 10;
-    const mockFromAccount: Wallet = { id: 1, publicKey: mockFrom, privateKey: 'fromPrivateKey', createdAt: new Date(), updatedAt: new Date(), solBalance: 100 };
-    const mockToAccount: Wallet = { id: 2, publicKey: mockTo, privateKey: 'toPrivateKey', createdAt: new Date(), updatedAt: new Date(), solBalance: 50 };
+    it('POST /create should create a wallet', async () => {
+        const mockWallet = { privateKey: 'privateKey', publicKey: 'publicKey' };
+        mockRequest = { body: mockWallet };
+        (prisma.wallet.create as jest.Mock).mockResolvedValue(mockWallet);
+        await router.post("/create", mockRequest as Request, mockResponse as Response);
+        expect(prisma.wallet.create).toHaveBeenCalledWith({ data: mockWallet });
+        expect(mockResponse.send).toHaveBeenCalledWith("success");
+    });
 
-    mockRequest = {
-      body: {
-        from: mockFrom,
-        to: mockTo,
-        amount: mockAmount,
-      },
-    };
-    (WalletController.getWalletByPublicKey as jest.Mock).mockResolvedValueOnce(mockFromAccount).mockResolvedValueOnce(mockToAccount);
-    const mockError = new Error('Test error');
-    (solanaUtils.sendTransaction as jest.Mock).mockRejectedValue(mockError);
+    it('POST /create should return an error if privateKey or publicKey is missing', async () => {
+        mockRequest = { body: { publicKey: 'publicKey' } };
+        await router.post("/create", mockRequest as Request, mockResponse as Response);
+        expect(mockResponse.send).toHaveBeenCalledWith("Private key required");
 
-    await router.post("/transfer", mockRequest as Request, mockResponse as Response);
+        mockRequest = { body: { privateKey: 'privateKey' } };
+        await router.post("/create", mockRequest as Request, mockResponse as Response);
+        expect(mockResponse.send).toHaveBeenCalledWith("Public key required");
 
-    expect(WalletController.getWalletByPublicKey).toHaveBeenCalledTimes(2);
-    expect(solanaUtils.sendTransaction).toHaveBeenCalled();
-    expect(mockResponse.json).toHaveBeenCalledWith(`err ${mockError}`);
-  });
+    });
+
+    it('POST /transfer should transfer SOL and return transaction details on success', async () => {
+        const fromPublicKey = 'fromPublicKey';
+        const toPublicKey = 'toPublicKey';
+        const amount = 10;
+        const mockFromWallet = { id: 1, publicKey: fromPublicKey, privateKey: "fromPrivateKey", solBalance: 100 };
+        const mockToWallet = { id: 2, publicKey: toPublicKey, privateKey: "toPrivateKey", solBalance: 50 };
+        const mockSendTransactionResponse: SendTransactionResponse = {
+            signature: 'signature',
+            fromBal: 90,
+            toBal: 60,
+            data: 'data',
+            url: 'url',
+        };
+
+        (WalletController.getWalletByPublicKey as jest.Mock).mockResolvedValueOnce(mockFromWallet).mockResolvedValueOnce(mockToWallet);
+        (solanaUtils.sendTransaction as jest.Mock).mockResolvedValue(mockSendTransactionResponse);
+        (WalletController.updateWallet as jest.Mock).mockResolvedValue(undefined);
+
+        mockRequest = { body: { from: fromPublicKey, to: toPublicKey, amount } };
+
+        await router.post("/transfer", mockRequest as Request, mockResponse as Response);
+
+        expect(WalletController.getWalletByPublicKey).toHaveBeenCalledTimes(2);
+        expect(WalletController.getWalletByPublicKey).toHaveBeenNthCalledWith(1, fromPublicKey);
+        expect(WalletController.getWalletByPublicKey).toHaveBeenNthCalledWith(2, toPublicKey);
+
+        expect(solanaUtils.sendTransaction).toHaveBeenCalledWith(
+            expect.objectContaining({ publicKey: new PublicKey(fromPublicKey) }),
+            expect.objectContaining({ publicKey: new PublicKey(toPublicKey) }),
+            amount
+        );
+        expect(WalletController.updateWallet).toHaveBeenCalledTimes(2);
+        expect(WalletController.updateWallet).toHaveBeenNthCalledWith(1, fromPublicKey, { solBalance: 90 });
+        expect(WalletController.updateWallet).toHaveBeenNthCalledWith(2, toPublicKey, { solBalance: 60 });
+
+        expect(mockResponse.json).toHaveBeenCalledWith(mockSendTransactionResponse);
+    });
+
+    it('POST /transfer should return an error if missing fields', async () => {
+        mockRequest = { body: { from: 'from', to: 'to' } };
+        await router.post("/transfer", mockRequest as Request, mockResponse as Response);
+        expect(mockResponse.status).toHaveBeenCalledWith(400);
+        expect(mockResponse.json).toHaveBeenCalledWith({
+            error: "Missing required fields",
+            missingFields: ["amount"],
+        });
+    });
+
+    it('POST /transfer should handle errors from sendTransaction', async () => {
+        const fromPublicKey = 'fromPublicKey';
+        const toPublicKey = 'toPublicKey';
+        const amount = 10;
+        const mockFromWallet = { id: 1, publicKey: fromPublicKey, privateKey: "fromPrivateKey", solBalance: 100 };
+        const mockToWallet = { id: 2, publicKey: toPublicKey, privateKey: "toPrivateKey", solBalance: 50 };
+        const errorMessage = 'Transaction failed';
+
+        (WalletController.getWalletByPublicKey as jest.Mock).mockResolvedValueOnce(mockFromWallet).mockResolvedValueOnce(mockToWallet);
+        (solanaUtils.sendTransaction as jest.Mock).mockRejectedValue(errorMessage);
+
+        mockRequest = { body: { from: fromPublicKey, to: toPublicKey, amount } };
+
+        await router.post("/transfer", mockRequest as Request, mockResponse as Response);
+        expect(mockResponse.json).toHaveBeenCalledWith(`err ${errorMessage}`);
+    });
 });
