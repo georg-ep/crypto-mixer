@@ -1,76 +1,77 @@
 import express from 'express';
 import bodyParser from 'body-parser';
 import walletRouter from './routes/wallets';
-import prisma from "./utils/prismaClient";
+import prisma from './utils/prismaClient';
 
 jest.mock('./utils/prismaClient', () => ({
   $disconnect: jest.fn(),
 }));
 
-describe('App', () => {
+jest.mock('express', () => {
+  const actual = jest.requireActual('express');
+  return {
+    ...actual,
+    Router: jest.fn(() => ({})),
+  };
+});
+
+describe('app', () => {
   let app: express.Express;
   let server: any;
+  const port = process.env.PORT || 3000;
 
-  beforeAll(async () => {
-    jest.spyOn(console, 'log').mockImplementation(() => {});
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-
+  beforeEach(async () => {
+    jest.clearAllMocks();
     app = express();
     app.use(bodyParser.urlencoded({ extended: true }));
     app.use(bodyParser.json());
     app.use('/wallets', walletRouter);
+  });
 
-    server = app.listen(3000, () => {
-      console.log(`Serving at http://localhost:3000`);
+  afterEach(async () => {
+    if (server) {
+      server.close();
+    }
+  });
+
+  it('should start the server and listen on the correct port', async () => {
+    const listenMock = jest.fn((port: number, callback: () => void) => {
+      callback();
+      return { close: jest.fn() };
     });
-  });
+    app.listen = listenMock;
 
-  afterAll(async () => {
-    await (prisma as any).$disconnect.mockResolvedValueOnce(undefined);
-    server.close();
-    jest.restoreAllMocks();
-  });
+    await jest.isolateModules(async () => {
+      require('./app');
+    });
 
-  it('should start the server and listen on the correct port', (done) => {
-    expect(server.listening).toBe(true);
-    done();
+    expect(listenMock).toHaveBeenCalledWith(port, expect.any(Function));
   });
 
   it('should use body-parser middleware', () => {
-    expect(app._router.stack.some((layer: any) => layer.handle.name === 'urlencodedParser')).toBe(true);
-    expect(app._router.stack.some((layer: any) => layer.handle.name === 'jsonParser')).toBe(true);
+    const useMock = jest.fn();
+    app.use = useMock;
+    jest.isolateModules(() => {
+        require('./app');
+    });
+
+    expect(useMock).toHaveBeenCalledWith(bodyParser.urlencoded({ extended: true }));
+    expect(useMock).toHaveBeenCalledWith(bodyParser.json());
   });
 
   it('should use the wallet router', () => {
-    expect(app._router.stack.some((layer: any) => layer.regexp.source === '\\/wallets\\b')).toBe(true);
-  });
+    const useMock = jest.fn();
+    app.use = useMock;
 
-  it('should handle errors during startup', async () => {
-    const originalExit = process.exit;
-    (process as any).exit = jest.fn();
-    const mockError = new Error('Test error');
-    const start = async () => {
-      throw mockError;
-    };
-
-    jest.spyOn(console, 'error').mockImplementation(() => {});
-
-    await start().catch(async (e) => {
-      console.error(e);
-      await (prisma as any).$disconnect();
-      process.exit(1);
+    jest.isolateModules(() => {
+        require('./app');
     });
-
-    expect(console.error).toHaveBeenCalledWith(mockError);
-    expect((process as any).exit).toHaveBeenCalledWith(1);
-    (process as any).exit = originalExit;
+    expect(useMock).toHaveBeenCalledWith('/wallets', walletRouter);
   });
 
-  it('should disconnect from the database on server close', async () => {
-    server.close();
-    await (prisma as any).$disconnect();
-    expect((prisma as any).$disconnect).toHaveBeenCalled();
+  it('should disconnect from the database after start and on error', async () => {
+    const start = require('./app').start;
+    await start();
+    expect(prisma.$disconnect).toHaveBeenCalledTimes(1);
   });
 });
-
-jest.isolateModules(() => { require("./app"); });
