@@ -1,84 +1,120 @@
-import express from "express";
-import bodyParser from "body-parser";
+import express from 'express';
+import bodyParser from 'body-parser';
 import walletRouter from './routes/wallets';
 import prisma from "./utils/prismaClient";
+
+jest.mock('express', () => {
+  const actualExpress = jest.requireActual('express');
+  return {
+    ...actualExpress,
+    Router: jest.fn(() => ({
+      get: jest.fn(),
+      post: jest.fn(),
+      put: jest.fn(),
+      delete: jest.fn(),
+    })),
+  };
+});
 
 jest.mock('./routes/wallets', () => ({
   __esModule: true,
   default: {
     get: jest.fn(),
     post: jest.fn(),
+    put: jest.fn(),
+    delete: jest.fn(),
   },
 }));
 
-jest.mock('./utils/prismaClient', () => ({
+jest.mock("./utils/prismaClient", () => ({
   $disconnect: jest.fn(),
 }));
 
-describe('app', () => {
+describe('app.ts', () => {
   let app: express.Express;
   let server: any;
-  const port = process.env.PORT || 3000;
-
   beforeAll(async () => {
-    // Dynamically import and start the app
-    const start = (await import('../src/app')).start; // Assuming app.ts exports a 'start' function
+    const { default: actualApp } = await import('./app');
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
     app = express();
-    app.use(bodyParser.urlencoded({ extended: true }))
     app.use(bodyParser.json());
-    app.use('/wallets', walletRouter);
-
-    server = app.listen(port, () => {
-      console.log(`Serving at http://localhost:${port}`);
-    });
+    app.use(bodyParser.urlencoded({ extended: true }));
   });
 
-  afterAll(async () => {
-    await (prisma.$disconnect as jest.Mock).mockResolvedValue(undefined);
-    server.close();
-
+  afterEach(async () => {
+    if (server) {
+      server.close();
+    }
   });
 
-
-  it('should use body-parser middleware', () => {
-    expect(app._router.stack.some((layer: any) => layer.handle.name === 'urlencodedParser')).toBe(true);
-    expect(app._router.stack.some((layer: any) => layer.handle.name === 'jsonParser')).toBe(true);
+  it('should call app.listen with the correct port', async () => {
+    const listenMock = jest.fn();
+    (express as any).mockImplementation(() => ({
+      use: jest.fn(),
+      listen: listenMock,
+    }));
+    await import('./app');
+    expect(listenMock).toHaveBeenCalled();
   });
 
-  it('should use the wallet router', () => {
-      expect(app._router.stack.some((layer: any) => layer.route && layer.route.path === '/wallets')).toBe(true);
+  it('should use bodyParser.urlencoded and bodyParser.json', async () => {
+    const useMock = jest.fn();
+    (express as any).mockImplementation(() => ({
+      use: useMock,
+      listen: jest.fn(),
+    }));
+    await import('./app');
+    expect(useMock).toHaveBeenCalledWith(bodyParser.urlencoded({ extended: true }));
+    expect(useMock).toHaveBeenCalledWith(bodyParser.json());
   });
 
-  it('should log a server start message', async () => {
-    //  This test is difficult to verify directly without more sophisticated mocking
-    // and inspection of the console output.  However, the server.listen call is covered.
+  it('should use the walletRouter', async () => {
+    const useMock = jest.fn();
+    (express as any).mockImplementation(() => ({
+      use: useMock,
+      listen: jest.fn(),
+    }));
+    await import('./app');
+    expect(useMock).toHaveBeenCalledWith('/wallets', walletRouter);
   });
 
-  it('should disconnect from the database on success', async () => {
-    await (prisma.$disconnect as jest.Mock).mockResolvedValue(undefined);
-    const start = (await import('../src/app')).start;
-    await start();
-    expect(prisma.$disconnect).toHaveBeenCalled();
+  it('should disconnect from prisma on success', async () => {
+    const disconnectMock = (prisma as any).$disconnect;
+    (express as any).mockImplementation(() => ({
+      use: jest.fn(),
+      listen: jest.fn(),
+    }));
+    await import('./app');
+    expect(disconnectMock).toHaveBeenCalled();
   });
 
-  it('should disconnect from the database and exit on error', async () => {
-    const mockExit = jest.spyOn(process, 'exit').mockImplementation((code) => {
-        throw new Error('process.exit: ' + code);
-    });
-    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
-    const start = (await import('../src/app')).start;
+  it('should disconnect from prisma on error', async () => {
+    const disconnectMock = (prisma as any).$disconnect;
+    const consoleErrorMock = jest.spyOn(console, 'error').mockImplementation();
+    const processExitMock = jest.spyOn(process, 'exit').mockImplementation();
+
+    (express as any).mockImplementation(() => ({
+      use: jest.fn(),
+      listen: jest.fn(),
+    }));
+    const originalEnv = process.env;
+    process.env = { ...originalEnv, PORT: '3001' };
 
     try {
-        await start();
+      await import('./app');
     } catch (e) {
-        // Expected error from process.exit
+      // expected error
+    } finally {
+      expect(disconnectMock).toHaveBeenCalled();
+      expect(consoleErrorMock).toHaveBeenCalled();
+      expect(processExitMock).toHaveBeenCalledWith(1);
+      consoleErrorMock.mockRestore();
+      processExitMock.mockRestore();
+      process.env = originalEnv;
     }
-
-    expect(prisma.$disconnect).toHaveBeenCalled();
-    expect(mockExit).toHaveBeenCalledWith(1);
-    expect(consoleErrorSpy).toHaveBeenCalled();
-
-    mockExit.mockRestore();
-    consoleErrorSpy.mockRestore();
   });
+
 });
