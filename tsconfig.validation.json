@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "*": [
+        "*",
+        "/jest-toolchain/node_modules/*"
+      ]
+    }
+  },
+  "files": [
+    "src/utils/prismaClient.validation.ts"
+  ]
+}
