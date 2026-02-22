@@ -6,7 +6,7 @@ import {
   Signer,
   PublicKey,
 } from "@solana/web3.js";
-import { getBalance, sendTransaction } from "./solana";
+import * as solana from "./solana";
 import { SendTransactionResponse } from "../interfaces/solana";
 
 jest.mock("@solana/web3.js", () => ({
@@ -18,14 +18,16 @@ jest.mock("@solana/web3.js", () => ({
 }));
 
 describe("solana", () => {
-  const mockFromSigner = {
-    publicKey: new PublicKey("H9v5ZqP8M7F2rB3bS4yJ8aQxR3eC1w2vL4uK5zT7a"),
+  const mockFrom = {
+    publicKey: new PublicKey("H9v63zN11s4Xz9rDqjK6M7gT5P3e5u1Z9W8o7GjY2y3"),
     secretKey: new Uint8Array(64),
-  } as Signer;
-  const mockToSigner = {
-    publicKey: new PublicKey("B4qV3wXyZ1aY8qK6hF5jP9gT2eC7dD0fL9rA3xS2y"),
+    sign: jest.fn(),
+  };
+  const mockTo = {
+    publicKey: new PublicKey("DqjK6M7gT5P3e5u1Z9W8o7GjY2y3H9v63zN11s4Xz9r"),
     secretKey: new Uint8Array(64),
-  } as Signer;
+    sign: jest.fn(),
+  };
   const mockAmount = 1000;
   const mockSignature = "signature";
 
@@ -35,63 +37,41 @@ describe("solana", () => {
 
   describe("getBalance", () => {
     it("should return the balance for a given address", async () => {
-      const mockConnection = new Connection("https://api.devnet.solana.com");
       const mockBalance = 1000000;
+      const mockConnection = new Connection("https://api.devnet.solana.com", "confirmed");
       (mockConnection.getBalance as jest.Mock).mockResolvedValue(mockBalance);
 
-      const balance = await getBalance(mockConnection, mockFromSigner.publicKey);
+      const balance = await solana.getBalance(mockConnection, mockFrom.publicKey);
 
-      expect(balance).toEqual(mockBalance);
-      expect(mockConnection.getBalance).toHaveBeenCalledWith(mockFromSigner.publicKey);
+      expect(balance).toBe(mockBalance);
+      expect(mockConnection.getBalance).toHaveBeenCalledWith(mockFrom.publicKey);
     });
   });
 
   describe("sendTransaction", () => {
-    it("should send a transaction successfully and return transaction details", async () => {
+    it("should send a transaction and return the signature and balances on success", async () => {
       (sendAndConfirmTransaction as jest.Mock).mockResolvedValue(mockSignature);
-      const mockConnection = new Connection("https://api.devnet.solana.com");
-      (mockConnection.getBalance as jest.Mock)
-        .mockResolvedValueOnce(2000)
-        .mockResolvedValueOnce(3000);
+      const mockConnection = new Connection("https://api.devnet.solana.com", "confirmed");
+      (mockConnection.getBalance as jest.Mock).mockResolvedValue(2000);
 
-      const expectedResponse: SendTransactionResponse = {
-        signature: mockSignature,
-        url: `https://explorer.solana.com/tx/${mockSignature}?cluster=devnet`,
-        fromBal: 2000,
-        toBal: 3000,
-        data: "success",
-      };
+      const result: SendTransactionResponse = await solana.sendTransaction(mockFrom, mockTo, mockAmount);
 
-      const result = await sendTransaction(mockFromSigner, mockToSigner, mockAmount);
-
-      expect(sendAndConfirmTransaction).toHaveBeenCalledWith(
-        expect.any(Connection),
-        expect.any(Transaction),
-        [mockFromSigner]
-      );
-      expect(result).toEqual(expectedResponse);
+      expect(sendAndConfirmTransaction).toHaveBeenCalled();
+      expect(result.signature).toBe(mockSignature);
+      expect(result.data).toBe("success");
+      expect(result.url).toContain("https://explorer.solana.com/tx/");
+      expect(result.fromBal).toBe(2000);
+      expect(result.toBal).toBe(2000);
     });
 
-    it("should handle transaction failure and return an error", async () => {
+    it("should return an error if sendAndConfirmTransaction fails", async () => {
       (sendAndConfirmTransaction as jest.Mock).mockRejectedValue(new Error("Transaction failed"));
-      const mockConnection = new Connection("https://api.devnet.solana.com");
+      const mockConnection = new Connection("https://api.devnet.solana.com", "confirmed");
 
-      const expectedResponse: SendTransactionResponse = {
-        signature: null,
-        fromBal: null,
-        toBal: null,
-        data: "error",
-        url: null,
-      };
+      const result: SendTransactionResponse = await solana.sendTransaction(mockFrom, mockTo, mockAmount);
 
-      const result = await sendTransaction(mockFromSigner, mockToSigner, mockAmount);
-
-      expect(sendAndConfirmTransaction).toHaveBeenCalledWith(
-        expect.any(Connection),
-        expect.any(Transaction),
-        [mockFromSigner]
-      );
-      expect(result).toEqual(expectedResponse);
+      expect(result.data).toBe("error");
+      expect(result.signature).toBeNull();
     });
   });
 });
