@@ -15,6 +15,6 @@
     }
   },
   "files": [
-    "src/routes/wallets.validation.ts"
+    "src/routes/wallets.verification.test.ts"
   ]
 }
