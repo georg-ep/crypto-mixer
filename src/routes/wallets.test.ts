@@ -1,162 +1,188 @@
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { Request, Response } from 'express';
-import router from './wallets';
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { Router, Request, Response } from "express";
+import { sendTransaction } from "../utils/solana";
+import { Signer, PublicKey } from "@solana/web3.js";
+import { SendTransactionResponse } from "../interfaces/solana";
+import { Wallet } from "@prisma/client";
 import prisma from "../utils/prismaClient";
-import * as solanaUtils from "../utils/solana";
-import WalletController from '../controllers/walletController';
-import { Signer } from "@solana/web3.js";
+import WalletController from "../controllers/walletController";
 import { validateFields } from "../utils/validation";
+import router from "./wallets";
 
-jest.mock('../utils/prismaClient', () => ({
+jest.mock("../utils/solana", () => ({
+  sendTransaction: jest.fn(),
+}));
+
+jest.mock("../utils/prismaClient", () => ({
   wallet: {
     findMany: jest.fn(),
     create: jest.fn(),
   },
 }));
 
-jest.mock('../utils/solana', () => ({
-    sendTransaction: jest.fn(),
+jest.mock("../controllers/walletController", () => ({
+  getWalletByPublicKey: jest.fn(),
+  updateWallet: jest.fn(),
 }));
 
-jest.mock('../controllers/walletController', () => ({
-    getWalletByPublicKey: jest.fn(),
-    updateWallet: jest.fn(),
-}));
-
-jest.mock('../utils/validation', () => ({
+jest.mock("../utils/validation", () => ({
   validateFields: jest.fn(),
 }));
 
-
-describe('wallets router', () => {
-  let mockRequest: any;
-  let mockResponse: any;
+describe("wallets route", () => {
+  let req: any;
+  let res: any;
 
   beforeEach(() => {
-    mockRequest = {
+    req = {
       body: {},
     };
-    mockResponse = {
+    res = {
       send: jest.fn(),
       json: jest.fn(),
-      status: jest.fn(() => mockResponse),
+      status: jest.fn().mockReturnThis(),
     };
   });
 
-  it('GET / should return wallets', async () => {
-    const mockWallets = [{ id: 1, publicKey: 'test' }];
-    (prisma.wallet.findMany as jest.Mock).mockResolvedValue(mockWallets);
-
-    // @ts-ignore
-    await router.stack.find(layer => layer.route?.path === "/").handle(mockRequest, mockResponse);
-
-    expect(prisma.wallet.findMany).toHaveBeenCalled();
-    expect(mockResponse.send).toHaveBeenCalledWith(mockWallets);
+  afterEach(() => {
+    jest.clearAllMocks();
   });
 
-  it('POST /create should create a wallet', async () => {
-    mockRequest.body = { privateKey: 'private', publicKey: 'public' };
-    (prisma.wallet.create as jest.Mock).mockResolvedValue({id:1, privateKey: 'private', publicKey: 'public'});
+  describe("GET /", () => {
+    it("should return wallets from the database", async () => {
+      const mockWallets = [{ id: 1, publicKey: 'test', privateKey: 'test' }];
+      (prisma.wallet.findMany as jest.Mock).mockResolvedValue(mockWallets);
 
-    // @ts-ignore
-    await router.stack.find(layer => layer.route?.path === "/create").handle(mockRequest, mockResponse);
-
-    expect(prisma.wallet.create).toHaveBeenCalledWith({
-      data: {
-        privateKey: 'private',
-        publicKey: 'public',
-      },
+      // Create a dummy router and call the route handler directly.
+      const app = Router();
+      app.get("/", router.stack.find(layer => layer.route && layer.route.path === "/" )?.route.stack[0].handle);
+      await app.handle(req, res);
+      
+      expect(prisma.wallet.findMany).toHaveBeenCalled();
+      expect(res.send).toHaveBeenCalledWith(mockWallets);
     });
-    expect(mockResponse.send).toHaveBeenCalledWith('success');
   });
 
-  it('POST /create should return an error if private key is missing', async () => {
-      mockRequest.body = { publicKey: 'public' };
+  describe("POST /create", () => {
+    it("should create a new wallet", async () => {
+      req.body = { privateKey: "testPrivateKey", publicKey: "testPublicKey" };
+      (prisma.wallet.create as jest.Mock).mockResolvedValue({ id: 1, publicKey: 'testPublicKey', privateKey: 'testPrivateKey' });
 
-      // @ts-ignore
-      await router.stack.find(layer => layer.route?.path === "/create").handle(mockRequest, mockResponse);
+      // Create a dummy router and call the route handler directly.
+      const app = Router();
+      app.post("/create", router.stack.find(layer => layer.route && layer.route.path === "/create" )?.route.stack[0].handle);
+      await app.handle(req, res);
 
-      expect(mockResponse.send).toHaveBeenCalledWith('Private key required');
-      expect(prisma.wallet.create).not.toHaveBeenCalled();
-  });
 
-  it('POST /create should return an error if public key is missing', async () => {
-      mockRequest.body = { privateKey: 'private' };
-
-      // @ts-ignore
-      await router.stack.find(layer => layer.route?.path === "/create").handle(mockRequest, mockResponse);
-
-      expect(mockResponse.send).toHaveBeenCalledWith('Public key required');
-      expect(prisma.wallet.create).not.toHaveBeenCalled();
-  });
-
-  it('POST /transfer should transfer SOL successfully', async () => {
-      const mockFromWallet = { id: 1, privateKey: 'fromPrivateKey', publicKey: 'fromPublic', solBalance: 100 };
-      const mockToWallet = { id: 2, privateKey: 'toPrivateKey', publicKey: 'toPublic', solBalance: 0 };
-      const mockAmount = 10;
-      const mockResponseData = {signature: 'sig', fromBal: 90, toBal: 10, data: 'data', url: 'url'};
-
-      mockRequest.body = { from: 'fromPublic', to: 'toPublic', amount: mockAmount };
-
-      (validateFields as jest.Mock).mockReturnValue([]);
-      (WalletController.getWalletByPublicKey as jest.Mock).mockImplementation(async (publicKey:string) => {
-        if(publicKey === 'fromPublic') return mockFromWallet;
-        if(publicKey === 'toPublic') return mockToWallet;
-        return null;
+      expect(prisma.wallet.create).toHaveBeenCalledWith({
+        data: {
+          privateKey: "testPrivateKey",
+          publicKey: "testPublicKey",
+        },
       });
-      (solanaUtils.sendTransaction as jest.Mock).mockResolvedValue(mockResponseData);
-      (WalletController.updateWallet as jest.Mock).mockResolvedValue({});
+      expect(res.send).toHaveBeenCalledWith("success");
+    });
 
-      // @ts-ignore
-      await router.stack.find(layer => layer.route?.path === "/transfer").handle(mockRequest, mockResponse);
+    it("should return an error if private key is missing", async () => {
+      req.body = { publicKey: "testPublicKey" };
+       // Create a dummy router and call the route handler directly.
+       const app = Router();
+       app.post("/create", router.stack.find(layer => layer.route && layer.route.path === "/create" )?.route.stack[0].handle);
+       await app.handle(req, res);
 
-      expect(validateFields).toHaveBeenCalledWith({from: 'fromPublic', to: 'toPublic', amount: mockAmount});
+      expect(res.send).toHaveBeenCalledWith("Private key required");
+      expect(prisma.wallet.create).not.toHaveBeenCalled();
+    });
+
+    it("should return an error if public key is missing", async () => {
+      req.body = { privateKey: "testPrivateKey" };
+       // Create a dummy router and call the route handler directly.
+       const app = Router();
+       app.post("/create", router.stack.find(layer => layer.route && layer.route.path === "/create" )?.route.stack[0].handle);
+       await app.handle(req, res);
+
+      expect(res.send).toHaveBeenCalledWith("Public key required");
+      expect(prisma.wallet.create).not.toHaveBeenCalled();
+    });
+
+    it("should return an error if prisma create fails", async () => {
+        req.body = { privateKey: "testPrivateKey", publicKey: "testPublicKey" };
+        (prisma.wallet.create as jest.Mock).mockRejectedValue(new Error("Database error"));
+  
+        // Create a dummy router and call the route handler directly.
+        const app = Router();
+        app.post("/create", router.stack.find(layer => layer.route && layer.route.path === "/create" )?.route.stack[0].handle);
+        await app.handle(req, res);
+  
+        expect(prisma.wallet.create).toHaveBeenCalled();
+        expect(res.send).toHaveBeenCalledWith("err Error: Database error");
+      });
+  });
+
+  describe("POST /transfer", () => {
+    it("should transfer tokens between wallets", async () => {
+      const fromWallet: any = { privateKey: "fromPrivateKey", publicKey: "fromPublicKey" , id: 1};
+      const toWallet: any = { privateKey: "toPrivateKey", publicKey: "toPublicKey", id: 2 };
+      const mockResponse: SendTransactionResponse = {
+        signature: "testSignature",
+        fromBal: 100,
+        toBal: 50,
+        data: {},
+        url: "testUrl",
+      };
+
+      req.body = { from: "fromPublicKey", to: "toPublicKey", amount: 10 };
+      (WalletController.getWalletByPublicKey as jest.Mock).mockResolvedValueOnce(fromWallet);
+      (WalletController.getWalletByPublicKey as jest.Mock).mockResolvedValueOnce(toWallet);
+      (sendTransaction as jest.Mock).mockResolvedValue(mockResponse);
+
+      // Create a dummy router and call the route handler directly.
+      const app = Router();
+      app.post("/transfer", router.stack.find(layer => layer.route && layer.route.path === "/transfer" )?.route.stack[0].handle);
+      await app.handle(req, res);
+
+      expect(validateFields).toHaveBeenCalledWith({ from: 'fromPublicKey', to: 'toPublicKey', amount: 10 });
       expect(WalletController.getWalletByPublicKey).toHaveBeenCalledTimes(2);
-      expect(solanaUtils.sendTransaction).toHaveBeenCalled();
+      expect(sendTransaction).toHaveBeenCalledWith(
+        expect.objectContaining({ publicKey: new PublicKey("fromPublicKey") }),
+        expect.objectContaining({ publicKey: new PublicKey("toPublicKey") }),
+        10
+      );
       expect(WalletController.updateWallet).toHaveBeenCalledTimes(2);
-      expect(mockResponse.json).toHaveBeenCalledWith(mockResponseData);
-  });
+      expect(res.json).toHaveBeenCalledWith(mockResponse);
+    });
 
-  it('POST /transfer should return 400 if validation fails', async () => {
-      const mockMissingFields = ['from', 'to'];
-      mockRequest.body = { from: '', to: '', amount: 10 };
+    it("should return 400 if validation fails", async () => {
+      req.body = { from: "", to: "", amount: "" };
+      (validateFields as jest.Mock).mockReturnValue(["from", "to", "amount"]);
 
-      (validateFields as jest.Mock).mockReturnValue(mockMissingFields);
+        // Create a dummy router and call the route handler directly.
+        const app = Router();
+        app.post("/transfer", router.stack.find(layer => layer.route && layer.route.path === "/transfer" )?.route.stack[0].handle);
+        await app.handle(req, res);
 
-      // @ts-ignore
-      await router.stack.find(layer => layer.route?.path === "/transfer").handle(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(400);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-          error: "Missing required fields",
-          missingFields: mockMissingFields,
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: "Missing required fields",
+        missingFields: ["from", "to", "amount"],
       });
-
       expect(WalletController.getWalletByPublicKey).not.toHaveBeenCalled();
-      expect(solanaUtils.sendTransaction).not.toHaveBeenCalled();
+      expect(sendTransaction).not.toHaveBeenCalled();
       expect(WalletController.updateWallet).not.toHaveBeenCalled();
-  });
+    });
 
-  it('POST /transfer should handle errors from sendTransaction', async () => {
-      const mockFromWallet = { id: 1, privateKey: 'fromPrivateKey', publicKey: 'fromPublic', solBalance: 100 };
-      const mockToWallet = { id: 2, privateKey: 'toPrivateKey', publicKey: 'toPublic', solBalance: 0 };
-      const mockAmount = 10;
-      const mockError = new Error('Transaction failed');
+    it("should handle errors from sendTransaction", async () => {
+      req.body = { from: "fromPublicKey", to: "toPublicKey", amount: 10 };
+      (WalletController.getWalletByPublicKey as jest.Mock).mockResolvedValue({privateKey: 'pk', publicKey: 'pk'});
+      (sendTransaction as jest.Mock).mockRejectedValue(new Error("Transaction failed"));
+      // Create a dummy router and call the route handler directly.
+      const app = Router();
+      app.post("/transfer", router.stack.find(layer => layer.route && layer.route.path === "/transfer" )?.route.stack[0].handle);
+      await app.handle(req, res);
 
-      mockRequest.body = { from: 'fromPublic', to: 'toPublic', amount: mockAmount };
 
-      (validateFields as jest.Mock).mockReturnValue([]);
-      (WalletController.getWalletByPublicKey as jest.Mock).mockImplementation(async (publicKey:string) => {
-          if(publicKey === 'fromPublic') return mockFromWallet;
-          if(publicKey === 'toPublic') return mockToWallet;
-          return null;
-      });
-      (solanaUtils.sendTransaction as jest.Mock).mockRejectedValue(mockError);
-
-      // @ts-ignore
-      await router.stack.find(layer => layer.route?.path === "/transfer").handle(mockRequest, mockResponse);
-
-      expect(mockResponse.json).toHaveBeenCalledWith(`err ${mockError}`);
+      expect(res.json).toHaveBeenCalledWith("err Error: Transaction failed");
       expect(WalletController.updateWallet).not.toHaveBeenCalled();
+    });
   });
 });
