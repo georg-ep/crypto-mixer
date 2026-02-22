@@ -15,6 +15,6 @@
     }
   },
   "files": [
-    "src/utils/prismaClient.verification.test.ts"
+    "src/routes/wallets.verification.test.ts"
   ]
 }
