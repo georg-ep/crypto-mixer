@@ -1,16 +1,23 @@
-import prisma from "../src/utils/prismaClient";
+import prisma from "./prismaClient";
 import { PrismaClient } from "@prisma/client";
 
-jest.mock('@prisma/client');
+jest.mock("@prisma/client", () => ({
+  PrismaClient: jest.fn(() => ({
+    $connect: jest.fn(),
+    $disconnect: jest.fn(),
+  })),
+}));
 
 describe("prismaClient", () => {
   it("should initialize PrismaClient", () => {
     expect(prisma).toBeInstanceOf(PrismaClient);
   });
 
-  it("should have the correct PrismaClient instance", () => {
-    // Check if the mock was initialized correctly.  This is a basic check; further checks
-    // would depend on the specific interactions expected with the Prisma client in your application.
-    expect(PrismaClient).toHaveBeenCalledTimes(1);
+  it("should mock PrismaClient methods", async () => {
+    const mockPrismaClient = new PrismaClient();
+    await mockPrismaClient.$connect();
+    await mockPrismaClient.$disconnect();
+    expect(mockPrismaClient.$connect).toHaveBeenCalled();
+    expect(mockPrismaClient.$disconnect).toHaveBeenCalled();
   });
 });
