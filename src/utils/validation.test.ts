@@ -1,12 +1,12 @@
 import { jest, describe, it, expect } from '@jest/globals';
-import { validateFields } from './validation';
+import { validateFields } from "./validation";
 
 describe('validateFields', () => {
   it('should return an empty array if all fields are present', () => {
     const fields = {
       name: 'John Doe',
       email: 'john.doe@example.com',
-      age: 30,
+      age: 30
     };
     const result = validateFields(fields);
     expect(result).toEqual([]);
@@ -16,39 +16,39 @@ describe('validateFields', () => {
     const fields = {
       name: 'John Doe',
       email: '',
-      age: 30,
+      age: undefined
     };
     const result = validateFields(fields);
-    expect(result).toEqual(['email']);
+    expect(result).toEqual(['email', 'age']);
   });
 
   it('should return an array of missing fields if all fields are missing', () => {
     const fields = {
       name: '',
       email: '',
-      age: '',
+      age: undefined
     };
     const result = validateFields(fields);
     expect(result).toEqual(['name', 'email', 'age']);
   });
 
-  it('should handle fields with null values', () => {
+  it('should handle fields with null values as missing', () => {
     const fields = {
-      name: null,
-      email: 'john.doe@example.com',
-      age: 30,
+      name: 'John Doe',
+      email: null,
+      age: 30
     };
     const result = validateFields(fields);
-    expect(result).toEqual(['name']);
+    expect(result).toEqual(['email']);
   });
 
-  it('should handle fields with undefined values', () => {
+  it('should handle fields with zero values as present', () => {
     const fields = {
-      name: undefined,
+      name: 'John Doe',
       email: 'john.doe@example.com',
-      age: 30,
+      age: 0
     };
     const result = validateFields(fields);
-    expect(result).toEqual(['name']);
+    expect(result).toEqual([]);
   });
 });
