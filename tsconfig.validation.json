@@ -5,16 +5,9 @@
     "moduleResolution": "node",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "isolatedModules": true,
-    "paths": {
-      "*": [
-        "*",
-        "/jest-toolchain/node_modules/*"
-      ]
-    }
+    "isolatedModules": true
   },
   "files": [
-    "src/utils/validation.verification.test.ts"
+    "src/controllers/walletController.verification.test.ts"
   ]
 }
