@@ -22,33 +22,53 @@ describe('validateFields', () => {
     expect(result).toEqual(['email']);
   });
 
-  it('should return an array of missing fields if all fields are missing', () => {
+  it('should handle missing fields with null values', () => {
+    const fields = {
+      name: 'John Doe',
+      email: null,
+      age: 30,
+    };
+    const result = validateFields(fields);
+    expect(result).toEqual(['email']);
+  });
+
+  it('should handle missing fields with undefined values', () => {
+    const fields = {
+      name: 'John Doe',
+      email: undefined,
+      age: 30,
+    };
+    const result = validateFields(fields);
+    expect(result).toEqual(['email']);
+  });
+
+  it('should handle missing fields with zero values', () => {
+    const fields = {
+      name: 'John Doe',
+      email: 'john.doe@example.com',
+      age: 0,
+    };
+    const result = validateFields(fields);
+    expect(result).toEqual([]);
+  });
+
+  it('should handle missing fields with empty string values', () => {
     const fields = {
       name: '',
-      email: '',
-      age: '',
+      email: 'john.doe@example.com',
+      age: 30,
+    };
+    const result = validateFields(fields);
+    expect(result).toEqual(['name']);
+  });
+
+  it('should return an array of all missing fields if all fields are missing', () => {
+    const fields = {
+      name: '',
+      email: null,
+      age: undefined,
     };
     const result = validateFields(fields);
     expect(result).toEqual(['name', 'email', 'age']);
-  });
-
-  it('should handle fields with null values', () => {
-    const fields = {
-      name: null,
-      email: 'john.doe@example.com',
-      age: 30,
-    };
-    const result = validateFields(fields);
-    expect(result).toEqual(['name']);
-  });
-
-  it('should handle fields with undefined values', () => {
-    const fields = {
-      name: undefined,
-      email: 'john.doe@example.com',
-      age: 30,
-    };
-    const result = validateFields(fields);
-    expect(result).toEqual(['name']);
   });
 });
